@@ -5,6 +5,12 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 from datetime import date
+from PyPDF2 import PdfReader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.chains.question_answering import load_qa_chain
+from langchain_community.chat_models import ChatOpenAI
 import ta
 
 # App Title
@@ -230,6 +236,49 @@ with col2:
     st.subheader("📉 Top Losers")
     st.write(pd.DataFrame(losers.items(), columns=["Ticker", "Change (%)"]))
 # Upward Trend Stocks based on TA
+st.markdown("---")
+st.subheader("🧠 Stock Market Chatbot")
+OPENAI_API_KEY = "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"
+with st.sidebar:
+    st.header("Upload PDF")
+    pdf_file = st.file_uploader("Choose a PDF file", type="pdf")
+
+# Process PDF
+if pdf_file:
+    pdf_reader = PdfReader(pdf_file)
+    text = ""
+    for page in pdf_reader.pages:
+        if page.extract_text():
+            text += page.extract_text()
+
+    # Text splitting
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=150,
+        length_function=len
+    )
+    chunks = text_splitter.split_text(text)
+
+    # Generate embeddings
+    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+    vector_store = FAISS.from_texts(chunks, embeddings)
+
+    # User question input
+    user_question = st.text_input("💬 Ask something about the document:")
+
+    if user_question:
+        with st.spinner("Thinking..."):
+            similar_docs = vector_store.similarity_search(user_question)
+            llm = ChatOpenAI(
+                openai_api_key=OPENAI_API_KEY,
+                temperature=0,
+                model_name="gpt-3.5-turbo"
+            )
+            chain = load_qa_chain(llm, chain_type="stuff")
+            response = chain.run(input_documents=similar_docs, question=user_question)
+
+        st.subheader("📌 Answer")
+        st.write(response)
 
 # 📩 Contact Me
 st.sidebar.markdown("---")
